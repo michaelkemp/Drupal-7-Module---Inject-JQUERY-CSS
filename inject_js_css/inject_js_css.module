@@ -1,0 +1,221 @@
+<?php
+
+function inject_js_css_init() {
+    
+    $contentType = "";
+    if ( arg(0) == 'node' && is_numeric(arg(1)) ) {
+        $contentType = db_query("SELECT type FROM {node} WHERE nid = :nid", array(':nid' => arg(1)))->fetchField();
+    }
+    
+    $json = variable_get("injectJsCssData","{}");
+    $data = json_decode($json,true);
+    for($i=0; $i<count($data); ++$i) {
+        $pages = isset($data[$i]["page"]) ? trim($data[$i]["page"]) : "";
+        $jquery = isset($data[$i]["jquery"]) ? trim($data[$i]["jquery"]) : "";
+        $types = isset($data[$i]["type"]) ? trim($data[$i]["type"]) : "";
+        $css = isset($data[$i]["css"]) ? trim($data[$i]["css"]) : "";
+        
+        if (injectJsCssPageMatch($pages) || injectJsCssTypeMatch($types,$contentType)) {
+            if ($jquery !== "") { drupal_add_js("(function ($) { jQuery(document).ready(function($) {".$jquery."}); }(jQuery));","inline"); }
+            if ($css    !== "") { drupal_add_css($css,'inline'); }
+        }
+    }
+    
+}
+
+function inject_js_css_menu() {
+    $items = array();
+    
+    $items['admin/config/content/inject_js_css'] = array(
+        'title' => 'Inject jQuery and CSS',
+        'description' => 'Configuration for Inject jQuery and CSS',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('inject_js_css_form'),
+        'access arguments' => array('access administration pages'),
+        'type' => MENU_NORMAL_ITEM,
+    );
+
+    return $items;
+}
+
+function inject_js_css_form($form, &$form_state) { 
+
+    $json = variable_get("injectJsCssData","{}");
+    $data = json_decode($json,true);
+    
+    $form['#tree'] = TRUE;
+
+    $form['#attached']['css'] = array( drupal_get_path('module', 'inject_js_css') . '/css/inject_js_css.css', );
+    $form['#attached']['js']  = array( drupal_get_path('module', 'inject_js_css') . '/js/inject_js_css.js', );
+    
+    $form['jquerypages_fieldset'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Add jQuery/CSS to Pages and/or Content Types'),
+        '#prefix' => '<div id="jquerypages-fieldset-wrapper">',
+        '#suffix' => '</div>',
+    );
+    
+    if (empty($form_state['num_jquerypages'])) {
+        if (count($data) > 0) {
+            $form_state['num_jquerypages'] = count($data);
+        } else {
+            $form_state['num_jquerypages'] = 1;
+            $data[0]["page"] = "";
+            $data[0]["type"] = "";
+            $data[0]["jquery"] = "";
+            $data[0]["css"] = "";
+        }
+    }
+    
+    for ($i = 0; $i < $form_state['num_jquerypages']; $i++) {
+        $form['jquerypages_fieldset']['pages'][$i] = array(
+            '#type' => 'fieldset',
+            '#prefix' => '<div class="page-fieldset" id="jquerypages-page${i}-fieldset-wrapper">',
+            '#suffix' => '</div>',
+        );
+
+        $form['jquerypages_fieldset']['pages'][$i]['page'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Page(s)'),
+            '#description' => t('Comma separated list of pages for this jQuery/CSS to appear on. Use * as a wild card'),
+            '#default_value' => t($data[$i]["page"]),
+            '#size' => 60,
+            '#maxlength' => 1024, 
+            '#required' => FALSE,
+        );
+     
+        $contentTypes = node_type_get_types();
+        $options = array();
+        foreach($contentTypes as $ct) {
+            $name = isset($ct->name) ? $ct->name : "";
+            $type = isset($ct->type) ? $ct->type : "";
+            $options[$type] = $name;
+        }
+        asort($options);
+        $form['jquerypages_fieldset']['pages'][$i]['type'] = array(
+            '#type' => 'checkboxes',
+            '#title' => t('Content Types'),
+            '#description' => t('Specific Content Types to target with this jQuery/CSS.'),            
+            '#options' => $options,
+            '#default_value' => explode(",",$data[$i]["type"])
+        );
+     
+        $form['jquerypages_fieldset']['pages'][$i]['jquery'] = array(
+            '#type' => 'textarea',
+            '#title' => t('jQuery'),
+            '#default_value' => t($data[$i]["jquery"]),
+            '#cols' => 40, 
+            '#rows' => 15,
+            '#required' => FALSE,
+        );
+
+        $form['jquerypages_fieldset']['pages'][$i]['css'] = array(
+            '#type' => 'textarea',
+            '#title' => t('CSS'),
+            '#default_value' => t($data[$i]["css"]),
+            '#cols' => 40, 
+            '#rows' => 15,
+            '#required' => FALSE,
+        );
+    }
+
+    $form['jquerypages_fieldset']['insert_page'] = array(
+        '#type' => 'submit',
+        '#value' => t('Add Page'),
+        '#submit' => array('inject_js_css_insert_page'),
+        '#limit_validation_errors' => array(),
+        '#ajax' => array(
+            'callback' => 'ajax_callback_inject_js_css',
+            'wrapper' => 'jquerypages-fieldset-wrapper',
+        ),
+    );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+    
+    return $form;
+}
+
+function ajax_callback_inject_js_css($form, $form_state) { return $form['jquerypages_fieldset']; }
+function inject_js_css_insert_page($form, &$form_state)  { $form_state['num_jquerypages']++;  $form_state['rebuild'] = TRUE; }
+
+function inject_js_css_form_submit($form, &$form_state) {
+
+    $injectJsCssData = isset($form_state["values"]["jquerypages_fieldset"]["pages"]) ? $form_state["values"]["jquerypages_fieldset"]["pages"] : array();
+    $toEncode = array();
+    $cnt = 0;
+    foreach($injectJsCssData as $data) {
+        $page = isset($data["page"])        ? trim($data["page"])   : "";
+        $jquery = isset($data["jquery"])    ? trim($data["jquery"]) : "";
+        $css = isset($data["css"])          ? trim($data["css"])    : "";
+        $types = isset($data["type"])       ? $data["type"]         : array();
+        $type = "";
+        foreach($types as $key=>$val) { if ($key === $val) { $type.= "${val},"; } }
+        
+        if ($page.$type != "") {
+            $toEncode[$cnt]["page"] = $page;
+            $toEncode[$cnt]["type"] = $type;
+            $toEncode[$cnt]["jquery"] = $jquery;
+            $toEncode[$cnt]["css"] = $css;
+            ++$cnt;
+        }
+    }
+    $json = json_encode($toEncode);
+    $crap = print_r($toEncode,true);
+    variable_set("injectJsCssData",$json);
+
+    drupal_set_message("Data Saved");
+    
+}
+
+
+/**
+ *
+ *  PAGE MATCH 
+ *
+ */
+function injectJsCssPageMatch($patternList) {
+
+	$pagePath = current_path();
+	$pageAlias = drupal_get_path_alias($pagePath);
+	$pageFront = variable_get('site_frontpage', 'node');
+	
+	$patternList = strtolower($patternList); // Lowercast Patterns
+	$patternList = preg_replace("/\s+/","",$patternList); // remove whitespace from Patterns
+	$patternList = str_replace("<front>",$pageFront,$patternList); // replace <front> with actual URL
+    $patternList = str_replace(",",PHP_EOL,$patternList); // replace commas with EOL
+	
+	if (drupal_match_path($pagePath, $patternList) || drupal_match_path($pageAlias, $patternList)) {
+		return true;
+    }
+	return false;
+	
+}
+
+
+/**
+ *
+ *  TYPE MATCH 
+ *
+ */
+function injectJsCssTypeMatch($patternList,$type) {
+	
+	$type = strtolower($type); // Lowercast ContentType
+	$type = preg_replace("/\s+/","",$type); // remove whitespace from ContentType
+
+	$patternList = strtolower($patternList); // Lowercast Patterns
+	$patternList = preg_replace("/\s+/","",$patternList); // remove whitespace from Patterns
+
+    if ($patternList !== "") {
+        $cTypes = explode(",",trim($patternList));
+        foreach($cTypes as $ct) {
+            if ( ($type !== "") && ($type === $ct) ) {
+                return true;
+            }
+        }
+    }
+	return false;
+	
+}

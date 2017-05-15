@@ -1,0 +1,21 @@
+.page-fieldset { 
+    padding: 10px; 
+    margin-bottom: 5px; 
+    border: 1px solid #444; 
+}
+.form-type-textarea { 
+    float: left; 
+    
+}
+input[type=text] {
+    width: 520px !important;
+    padding-left:10px; 
+}
+textarea {
+    width: 550px !important;
+    height: 150px !important; 
+    resize: none !important;
+}
+.grippie {
+    display:none;
+}
