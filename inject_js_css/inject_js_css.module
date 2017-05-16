@@ -3,9 +3,7 @@
 function inject_js_css_init() {
     
     $contentType = "";
-    if ( arg(0) == 'node' && is_numeric(arg(1)) ) {
-        $contentType = db_query("SELECT type FROM {node} WHERE nid = :nid", array(':nid' => arg(1)))->fetchField();
-    }
+    if ( arg(0) == 'node' && is_numeric(arg(1)) ) { $contentType = db_query("SELECT type FROM {node} WHERE nid = :nid", array(':nid' => arg(1)))->fetchField(); }
     
     $json = variable_get("injectJsCssData","{}");
     $data = json_decode($json,true);
@@ -14,10 +12,15 @@ function inject_js_css_init() {
         $jquery = isset($data[$i]["jquery"]) ? trim($data[$i]["jquery"]) : "";
         $types = isset($data[$i]["type"]) ? trim($data[$i]["type"]) : "";
         $css = isset($data[$i]["css"]) ? trim($data[$i]["css"]) : "";
+        $jqueryUI = isset($data[$i]["jqueryUI"]) ? trim($data[$i]["jqueryUI"]) : "";
         
         if (injectJsCssPageMatch($pages) || injectJsCssTypeMatch($types,$contentType)) {
-            if ($jquery !== "") { drupal_add_js("(function ($) { jQuery(document).ready(function($) {".$jquery."}); }(jQuery));","inline"); }
-            if ($css    !== "") { drupal_add_css($css,'inline'); }
+            if ($jquery !== "")             { drupal_add_js("(function ($) { jQuery(document).ready(function($) {".$jquery."}); }(jQuery));","inline"); }
+            if ($css    !== "")             { drupal_add_css($css,'inline'); }
+            if ($jqueryUI === "include")    {
+                drupal_add_js(  drupal_get_path("module", "inject_js_css") . "/jquery-ui-1.12.1/jquery-ui.min.js","file");
+                drupal_add_css( drupal_get_path("module", "inject_js_css") . "/jquery-ui-1.12.1/jquery-ui.min.css","file");
+            }
         }
     }
     
@@ -25,7 +28,6 @@ function inject_js_css_init() {
 
 function inject_js_css_menu() {
     $items = array();
-    
     $items['admin/config/content/inject_js_css'] = array(
         'title' => 'Inject jQuery and CSS',
         'description' => 'Configuration for Inject jQuery and CSS',
@@ -34,7 +36,6 @@ function inject_js_css_menu() {
         'access arguments' => array('access administration pages'),
         'type' => MENU_NORMAL_ITEM,
     );
-
     return $items;
 }
 
@@ -58,12 +59,21 @@ function inject_js_css_form($form, &$form_state) {
     if (empty($form_state['num_jquerypages'])) {
         if (count($data) > 0) {
             $form_state['num_jquerypages'] = count($data);
+            for($i=0;$i<count($data);++$i) {
+                // ENSURE NEW VALUES ARE INITIALISED
+                $data[$i]["page"]     = isset($data[$i]["page"])      ? $data[$i]["page"] : "";
+                $data[$i]["type"]     = isset($data[$i]["type"])      ? $data[$i]["type"] : "";
+                $data[$i]["jquery"]   = isset($data[$i]["jquery"])    ? $data[$i]["jquery"] : "";
+                $data[$i]["css"]      = isset($data[$i]["css"])       ? $data[$i]["css"] : "";
+                $data[$i]["jqueryUI"] = isset($data[$i]["jqueryUI"])  ? $data[$i]["jqueryUI"] : "";
+            }
         } else {
             $form_state['num_jquerypages'] = 1;
             $data[0]["page"] = "";
             $data[0]["type"] = "";
             $data[0]["jquery"] = "";
             $data[0]["css"] = "";
+            $data[0]["jqueryUI"] = "0";
         }
     }
     
@@ -100,6 +110,16 @@ function inject_js_css_form($form, &$form_state) {
             '#default_value' => explode(",",$data[$i]["type"])
         );
      
+        $options = array();
+        $options["include"] = "Include jQueryUI 1.12.1";
+        $form['jquerypages_fieldset']['pages'][$i]['jqueryUI'] = array(
+            '#type' => 'checkboxes',
+            '#title' => t('jQueryUI'),
+            '#options' => $options,
+            '#default_value' => array($data[$i]["jqueryUI"]),
+            '#required' => FALSE,
+        );
+        
         $form['jquerypages_fieldset']['pages'][$i]['jquery'] = array(
             '#type' => 'textarea',
             '#title' => t('jQuery'),
@@ -147,10 +167,11 @@ function inject_js_css_form_submit($form, &$form_state) {
     $toEncode = array();
     $cnt = 0;
     foreach($injectJsCssData as $data) {
-        $page = isset($data["page"])        ? trim($data["page"])   : "";
-        $jquery = isset($data["jquery"])    ? trim($data["jquery"]) : "";
-        $css = isset($data["css"])          ? trim($data["css"])    : "";
-        $types = isset($data["type"])       ? $data["type"]         : array();
+        $page = isset($data["page"])                        ? trim($data["page"])   : "";
+        $jquery = isset($data["jquery"])                    ? trim($data["jquery"]) : "";
+        $jqueryUI = isset($data["jqueryUI"]["include"])     ? trim($data["jqueryUI"]["include"]) : "0";
+        $css = isset($data["css"])                          ? trim($data["css"])    : "";
+        $types = isset($data["type"])                       ? $data["type"]         : array();
         $type = "";
         foreach($types as $key=>$val) { if ($key === $val) { $type.= "${val},"; } }
         
@@ -159,13 +180,12 @@ function inject_js_css_form_submit($form, &$form_state) {
             $toEncode[$cnt]["type"] = $type;
             $toEncode[$cnt]["jquery"] = $jquery;
             $toEncode[$cnt]["css"] = $css;
+            $toEncode[$cnt]["jqueryUI"] = $jqueryUI;
             ++$cnt;
         }
     }
     $json = json_encode($toEncode);
-    $crap = print_r($toEncode,true);
     variable_set("injectJsCssData",$json);
-
     drupal_set_message("Data Saved");
     
 }
