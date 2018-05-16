@@ -1,7 +1,7 @@
 name = "Inject jQuery and CSS"
 description = "Inject jQuery and CSS to Target Pages / Content Types"
 core = "7.x"
-version = 3.50
+version = 3.70
 
 configure = admin/config/content/inject_js_css
 

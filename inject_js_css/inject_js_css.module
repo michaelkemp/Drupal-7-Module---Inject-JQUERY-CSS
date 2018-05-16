@@ -13,6 +13,7 @@ function inject_js_css_init() {
         $types = isset($data[$i]["type"]) ? trim($data[$i]["type"]) : "";
         $css = isset($data[$i]["css"]) ? trim($data[$i]["css"]) : "";
         $jqueryUI = isset($data[$i]["jqueryUI"]) ? trim($data[$i]["jqueryUI"]) : "";
+        $noGoogle = isset($data[$i]["noGoogle"]) ? trim($data[$i]["noGoogle"]) : "";
         
         if (injectJsCssPageMatch($pages) || injectJsCssTypeMatch($types,$contentType)) {
             if ($jquery !== "")             { drupal_add_js("(function ($) { jQuery(document).ready(function($) {".$jquery."}); }(jQuery));","inline"); }
@@ -20,6 +21,17 @@ function inject_js_css_init() {
             if ($jqueryUI === "include")    {
                 drupal_add_js(  drupal_get_path("module", "inject_js_css") . "/jquery-ui-1.12.1/jquery-ui.min.js","file");
                 drupal_add_css( drupal_get_path("module", "inject_js_css") . "/jquery-ui-1.12.1/jquery-ui.min.css","file");
+            }
+            if ($noGoogle === "include")    {
+                $meta_nofollow = array(
+                    '#type' => 'html_tag',
+                    '#tag' => 'meta',
+                    '#attributes' => array(
+                        'name' => 'robots',
+                        'content' =>  'noindex,nofollow'
+                    )
+                );
+                drupal_add_html_head( $meta_nofollow, 'meta_nofollow' );
             }
         }
     }
@@ -65,7 +77,8 @@ function inject_js_css_form($form, &$form_state) {
                 $data[$i]["type"]     = isset($data[$i]["type"])      ? $data[$i]["type"] : "";
                 $data[$i]["jquery"]   = isset($data[$i]["jquery"])    ? $data[$i]["jquery"] : "";
                 $data[$i]["css"]      = isset($data[$i]["css"])       ? $data[$i]["css"] : "";
-                $data[$i]["jqueryUI"] = isset($data[$i]["jqueryUI"])  ? $data[$i]["jqueryUI"] : "";
+                $data[$i]["jqueryUI"] = isset($data[$i]["jqueryUI"])  ? $data[$i]["jqueryUI"] : "0";
+                $data[$i]["noGoogle"] = isset($data[$i]["noGoogle"])  ? $data[$i]["noGoogle"] : "0";
             }
         } else {
             $form_state['num_jquerypages'] = 1;
@@ -74,6 +87,7 @@ function inject_js_css_form($form, &$form_state) {
             $data[0]["jquery"] = "";
             $data[0]["css"] = "";
             $data[0]["jqueryUI"] = "0";
+            $data[0]["noGoogle"] = "0";
         }
     }
     
@@ -111,6 +125,16 @@ function inject_js_css_form($form, &$form_state) {
         );
      
         $options = array();
+        $options["include"] = "Add NoIndex and NoFollow.";
+        $form['jquerypages_fieldset']['pages'][$i]['noGoogle'] = array(
+            '#type' => 'checkboxes',
+            '#title' => t('Discourage Search Engines'),
+            '#options' => $options,
+            '#default_value' => array($data[$i]["noGoogle"]),
+            '#required' => FALSE,
+        );
+        
+        $options = array();
         $options["include"] = "Include jQueryUI 1.12.1";
         $form['jquerypages_fieldset']['pages'][$i]['jqueryUI'] = array(
             '#type' => 'checkboxes',
@@ -137,6 +161,7 @@ function inject_js_css_form($form, &$form_state) {
             '#rows' => 15,
             '#required' => FALSE,
         );
+        
     }
 
     $form['jquerypages_fieldset']['insert_page'] = array(
@@ -170,6 +195,7 @@ function inject_js_css_form_submit($form, &$form_state) {
         $page = isset($data["page"])                        ? trim($data["page"])   : "";
         $jquery = isset($data["jquery"])                    ? trim($data["jquery"]) : "";
         $jqueryUI = isset($data["jqueryUI"]["include"])     ? trim($data["jqueryUI"]["include"]) : "0";
+        $noGoogle = isset($data["noGoogle"]["include"])     ? trim($data["noGoogle"]["include"]) : "0";
         $css = isset($data["css"])                          ? trim($data["css"])    : "";
         $types = isset($data["type"])                       ? $data["type"]         : array();
         $type = "";
@@ -181,6 +207,7 @@ function inject_js_css_form_submit($form, &$form_state) {
             $toEncode[$cnt]["jquery"] = $jquery;
             $toEncode[$cnt]["css"] = $css;
             $toEncode[$cnt]["jqueryUI"] = $jqueryUI;
+            $toEncode[$cnt]["noGoogle"] = $noGoogle;
             ++$cnt;
         }
     }
